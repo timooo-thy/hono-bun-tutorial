@@ -2,8 +2,8 @@ import { Hono } from "hono";
 import { db } from "./db";
 import { eq, sql } from "drizzle-orm";
 import { limits } from "./db/schema";
-import { validator } from "hono/validator";
 import { transactSchema } from "./validators/limits.schema";
+import { zValidator } from "@hono/zod-validator";
 
 const app = new Hono();
 
@@ -30,7 +30,8 @@ app
         .select()
         .from(limits)
         .where(eq(limits.id, Number(c.req.param("id"))))
-        .limit(1);
+        .limit(1)
+        .then((res) => res[0]);
 
       return c.json({ counterParty }, 200);
     } catch (error) {
@@ -62,48 +63,36 @@ app
       return c.json(catchError(error), 500);
     }
   })
-  .post(
-    "/transact/:id",
-    validator("json", (value, c) => {
-      const parsed = transactSchema.safeParse(value);
-      if (!parsed.success) {
-        return c.json({ error: parsed.error.errors[0].message }, 400);
-      }
-      return parsed.data;
-    }),
-    async (c) => {
-      try {
-        const body = c.req.valid("json");
-        const transactionAmount = Number(body.amount);
+  .post("/transact/:id", zValidator("json", transactSchema), async (c) => {
+    try {
+      const body = c.req.valid("json");
+      const transactionAmount = Number(body.amount);
 
-        const counterParty = await db
-          .select()
-          .from(limits)
+      const counterParty = await db
+        .select()
+        .from(limits)
+        .where(eq(limits.id, Number(c.req.param("id"))))
+        .limit(1)
+        .then((res) => res[0]);
+
+      if (!counterParty) {
+        return c.notFound();
+      } else if (counterParty.available_limit < transactionAmount) {
+        return c.json({ error: "Insufficient funds" }, 400);
+      } else {
+        const updatedCounterParty = await db
+          .update(limits)
+          .set({
+            available_limit: counterParty.available_limit - transactionAmount,
+          })
           .where(eq(limits.id, Number(c.req.param("id"))))
-          .limit(1);
+          .returning();
 
-        if (!counterParty[0]) {
-          return c.json({ error: "Counter party not found" }, 404);
-        } else if (
-          (counterParty[0].available_limit as number) < transactionAmount
-        ) {
-          return c.json({ error: "Insufficient funds" }, 400);
-        } else {
-          const updatedCounterParty = await db
-            .update(limits)
-            .set({
-              available_limit:
-                (counterParty[0].available_limit as number) - transactionAmount,
-            })
-            .where(eq(limits.id, Number(c.req.param("id"))))
-            .returning();
-
-          return c.json({ counterParty: updatedCounterParty }, 200);
-        }
-      } catch (error) {
-        return c.json(catchError(error), 500);
+        return c.json({ counterParty: updatedCounterParty }, 200);
       }
+    } catch (error) {
+      return c.json(catchError(error), 500);
     }
-  );
+  });
 
 export default app;

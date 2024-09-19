@@ -27,7 +27,8 @@ app
       const instrument = await db
         .select()
         .from(instruments)
-        .where(eq(instruments.id, Number(c.req.param("id"))));
+        .where(eq(instruments.id, Number(c.req.param("id"))))
+        .then((res) => res[0]);
 
       return c.json({ instrument }, 200);
     } catch (error) {
