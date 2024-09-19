@@ -24,20 +24,6 @@ app
       return c.json(catchError(error), 500);
     }
   })
-  .get("/:id", async (c) => {
-    try {
-      const counterParty = await db
-        .select()
-        .from(limits)
-        .where(eq(limits.id, Number(c.req.param("id"))))
-        .limit(1)
-        .then((res) => res[0]);
-
-      return c.json({ counterParty }, 200);
-    } catch (error) {
-      return c.json(catchError(error), 500);
-    }
-  })
   .get("/groups/sum", async (c) => {
     try {
       const limitsByGroup = await db
@@ -59,6 +45,47 @@ app
         .from(limits)
         .where(sql`lower(${limits.group}) = lower(${c.req.param("group")})`);
       return c.json({ limits: limitsByGroup }, 200);
+    } catch (error) {
+      return c.json(catchError(error), 500);
+    }
+  })
+  .get("/groups/:group/counterparties", async (c) => {
+    try {
+      const counterPartiesByGroup = await db
+        .select()
+        .from(limits)
+        .where(sql`lower(${limits.group}) = lower(${c.req.param("group")})`)
+        .then((res) => res.map((limit) => limit.counterparty));
+
+      return c.json({ counterparties: counterPartiesByGroup }, 200);
+    } catch (error) {
+      return c.json(catchError(error), 500);
+    }
+  })
+  .get("/counterparties/:id/limit", async (c) => {
+    try {
+      const counterPartyLimit = await db
+        .select()
+        .from(limits)
+        .where(eq(limits.id, Number(c.req.param("id"))))
+        .limit(1)
+        .then((res) => res[0].available_limit);
+
+      return c.json({ availableLimit: counterPartyLimit }, 200);
+    } catch (error) {
+      return c.json(catchError(error), 500);
+    }
+  })
+  .get("/counterparty/:id", async (c) => {
+    try {
+      const counterParty = await db
+        .select()
+        .from(limits)
+        .where(eq(limits.id, Number(c.req.param("id"))))
+        .limit(1)
+        .then((res) => res[0]);
+
+      return c.json({ counterParty }, 200);
     } catch (error) {
       return c.json(catchError(error), 500);
     }
